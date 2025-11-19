@@ -1,0 +1,148 @@
+@import "tailwindcss";
+
+:root {
+  /* Basketball-themed color palette */
+  --background: #000000;
+  --foreground: #ffffff;
+  --orange-primary: #FF6B35;
+  --orange-bright: #FF8C42;
+  --blue-electric: #00D9FF;
+  --purple-neon: #B24BF3;
+  --red-hot: #FF3366;
+  --green-court: #00FF88;
+  
+  /* Gradients */
+  --gradient-primary: linear-gradient(135deg, #FF6B35 0%, #FF3366 100%);
+  --gradient-secondary: linear-gradient(135deg, #00D9FF 0%, #B24BF3 100%);
+  --gradient-court: linear-gradient(180deg, #000000 0%, #0a0a0a 100%);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  
+  /* Custom colors */
+  --color-orange-primary: #FF6B35;
+  --color-orange-bright: #FF8C42;
+  --color-blue-electric: #00D9FF;
+  --color-purple-neon: #B24BF3;
+  --color-red-hot: #FF3366;
+  --color-green-court: #00FF88;
+}
+
+body {
+  background: #000000;
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #FF6B35 0%, #FF3366 100%);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #FF8C42 0%, #FF3366 100%);
+}
+
+/* Glow effects */
+@keyframes glow-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Fade in animation for video cards */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s ease-out forwards;
+}
+
+.glow-orange {
+  box-shadow: 0 0 20px rgba(255, 107, 53, 0.5), 0 0 40px rgba(255, 107, 53, 0.3);
+}
+
+.glow-blue {
+  box-shadow: 0 0 20px rgba(0, 217, 255, 0.5), 0 0 40px rgba(0, 217, 255, 0.3);
+}
+
+.glow-purple {
+  box-shadow: 0 0 20px rgba(178, 75, 243, 0.5), 0 0 40px rgba(178, 75, 243, 0.3);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #FF6B35 0%, #FF3366 50%, #00D9FF 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Animated gradient border */
+@keyframes border-spin {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animated-border {
+  position: relative;
+  background: #0a0a0a;
+  border-radius: 12px;
+}
+
+.animated-border::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #FF6B35, #FF3366, #00D9FF, #B24BF3, #FF6B35);
+  background-size: 200% 200%;
+  animation: border-spin 3s linear infinite;
+  z-index: -1;
+  opacity: 0.8;
+}
+
+/* Transitions */
+* {
+  transition-property: color, background-color, border-color, transform, opacity, box-shadow;
+  transition-duration: 200ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}

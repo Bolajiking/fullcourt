@@ -109,52 +109,58 @@ export async function getLivepeerAsset(assetId: string) {
 }
 
 /**
+ * Get playback info from playback ID using Livepeer SDK
+ * This matches the working implementation pattern
+ * Returns the full playback info object with sources
+ */
+export async function getPlaybackInfo(playbackId: string): Promise<any | null> {
+  try {
+    console.log(`[Playback Info] Fetching playback info for: ${playbackId}`);
+    const livepeer = getLivepeerClient();
+    
+    // Use Livepeer SDK to get playback info (like the working example)
+    const result = await livepeer.playback.get(playbackId);
+    
+    if (!result.playbackInfo) {
+      console.error('[Playback Info] Error fetching playback info', result);
+      return null;
+    }
+    
+    console.log('[Playback Info] Successfully fetched playback info:', {
+      hasPlaybackInfo: !!result.playbackInfo,
+      hasMeta: !!result.playbackInfo?.meta,
+      hasSource: !!(result.playbackInfo?.meta?.source),
+    });
+    
+    return result.playbackInfo;
+  } catch (error: any) {
+    console.error('[Playback Info] Error:', {
+      playbackId,
+      error: error?.message || String(error),
+    });
+    return null;
+  }
+}
+
+/**
  * Get playback URL from playback ID
- * Fetches the actual playback URL from Livepeer API
+ * Fetches the actual playback URL from Livepeer API using the SDK
  * Returns null if the video is not ready or URL cannot be fetched
  */
 export async function getPlaybackUrl(playbackId: string): Promise<string | null> {
   try {
-    console.log(`[Playback URL] Fetching playback URL for: ${playbackId}`);
-    const apiKey = serverEnv.livepeerApiKey;
-    if (!apiKey) {
-      console.warn('[Playback URL] No Livepeer API key configured');
+    const playbackInfo = await getPlaybackInfo(playbackId);
+    
+    if (!playbackInfo) {
+      console.warn('[Playback URL] No playback info available');
       return null;
     }
     
-    // Use the correct Livepeer API endpoint to fetch playback info
-    // This will give us the CDN URL for the video
-    const response = await fetch(`https://livepeer.studio/api/playback/${playbackId}`, {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.warn(`[Playback URL] API fetch failed: ${response.status} ${response.statusText}`, {
-        playbackId,
-        errorPreview: errorText.substring(0, 200),
-      });
-      return null;
-    }
-    
-    const data = await response.json();
-    console.log('[Playback URL] API response received:', {
-      hasType: !!data.type,
-      hasMeta: !!data.meta,
-      hasSource: !!(data.meta?.source),
-      sourceLength: data.meta?.source?.length || 0,
-    });
-    
-    // Extract HLS URL from response
-    // Livepeer returns playback info with multiple sources
-    // We want the HLS (.m3u8) source for streaming
-    const sources = data.meta?.source || data.source || [];
+    // Extract HLS URL from playback info
+    const sources = playbackInfo.meta?.source || [];
     
     if (!Array.isArray(sources) || sources.length === 0) {
-      console.warn('[Playback URL] No sources found in playback response');
+      console.warn('[Playback URL] No sources found in playback info');
       return null;
     }
     
@@ -178,15 +184,12 @@ export async function getPlaybackUrl(playbackId: string): Promise<string | null>
       return firstSourceWithSrc.src;
     }
     
-    console.warn('[Playback URL] No usable source found in response:', {
-      sources: sources.map((s: any) => ({ type: s.type, hasSrc: !!s.src })),
-    });
+    console.warn('[Playback URL] No usable source found');
     return null;
   } catch (error: any) {
     console.error('[Playback URL] Error fetching playback URL:', {
       playbackId,
       error: error?.message || String(error),
-      stack: error?.stack,
     });
     return null;
   }

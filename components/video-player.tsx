@@ -45,40 +45,64 @@ export function VideoPlayer({
   showControls = true,
   type = 'vod',
 }: VideoPlayerProps) {
-  // Create source object for Livepeer player
-  // The player needs a specific source format
-  const src: Src[] | null = (() => {
+  const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
+  const [isLoadingUrl, setIsLoadingUrl] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Fetch the playback URL from our API (which uses the Livepeer SDK)
+  useEffect(() => {
     if (!playbackId) {
-      return null;
+      setIsLoadingUrl(false);
+      return;
     }
     
     const trimmedPlaybackId = playbackId.trim();
-    console.log('[Video Player] Creating source for playback ID:', trimmedPlaybackId);
+    console.log('[Video Player] Fetching playback URL for:', trimmedPlaybackId);
     
-    // Use the primary working CDN URL from our diagnostic
-    const hlsUrl = `https://livepeercdn.com/hls/${trimmedPlaybackId}/index.m3u8`;
-    
-    console.log('[Video Player] Using HLS URL:', hlsUrl);
-    
-    // Create source object with proper HLS MIME type
-    const sources: Src[] = [
-      {
-        src: hlsUrl,
-        type: 'application/x-mpegURL', // Standard HLS MIME type
-        width: 1920,
-        height: 1080,
-      } as any,
-    ];
-    
-    console.log('[Video Player] Created source configuration');
-    
-    return sources;
-  })();
+    fetch(`/api/videos/playback-url?playbackId=${encodeURIComponent(trimmedPlaybackId)}`)
+      .then(async (response) => {
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `Failed to fetch playback URL: ${response.status}`);
+        }
+        
+        return response.json();
+      })
+      .then((data) => {
+        if (data.playbackUrl) {
+          console.log('[Video Player] Fetched playback URL:', data.playbackUrl.substring(0, 100) + '...');
+          setPlaybackUrl(data.playbackUrl);
+        } else {
+          console.warn('[Video Player] No playback URL in response');
+          setError('Video source not available');
+        }
+      })
+      .catch((err) => {
+        console.error('[Video Player] Error fetching playback URL:', err);
+        setError(err.message || 'Failed to load video');
+      })
+      .finally(() => {
+        setIsLoadingUrl(false);
+      });
+  }, [playbackId]);
   
-  const [error, setError] = useState<string | null>(null);
+  // Create source array for the player
+  const src: Src[] | null = playbackUrl ? [playbackUrl as any] : null;
   
-  // Show error if no playback ID
-  if (!playbackId || !src) {
+  // Show loading state while fetching URL
+  if (isLoadingUrl) {
+    return (
+      <div className="flex aspect-video w-full items-center justify-center rounded-xl bg-gradient-to-br from-black to-[#0a0a0a] border border-white/10">
+        <div className="text-center">
+          <div className="mb-4 inline-block h-12 w-12 animate-spin rounded-full border-4 border-[#FF6B35] border-t-transparent"></div>
+          <p className="text-sm font-medium text-white/80">Loading video...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // Show error if no playback ID or failed to fetch URL
+  if (!playbackId || !src || error) {
     return (
       <div className="flex aspect-video w-full items-center justify-center rounded-xl bg-gradient-to-br from-black to-[#0a0a0a] border border-white/10">
         <div className="text-center p-8">

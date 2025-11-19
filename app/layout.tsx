@@ -31,7 +31,7 @@ export default function RootLayout({
       >
         <PrivyProvider>
           <LivepeerProvider>
-            {children}
+        {children}
           </LivepeerProvider>
         </PrivyProvider>
       </body>

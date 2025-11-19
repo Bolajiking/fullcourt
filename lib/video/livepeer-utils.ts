@@ -164,24 +164,24 @@ export async function getPlaybackUrl(playbackId: string): Promise<string | null>
       return null;
     }
     
-    // Find HLS source
+    // Find HLS source (SDK returns 'url' not 'src')
     const hlsSource = sources.find((s: any) => 
       s.type === 'html5/application/vnd.apple.mpegurl' || 
       s.type?.includes('mpegurl') ||
       s.type?.includes('m3u8') ||
-      s.src?.includes('.m3u8')
+      s.url?.includes('.m3u8')
     );
     
-    if (hlsSource?.src) {
-      console.log(`[Playback URL] Found HLS URL: ${hlsSource.src.substring(0, 100)}...`);
-      return hlsSource.src;
+    if (hlsSource?.url) {
+      console.log(`[Playback URL] Found HLS URL: ${hlsSource.url.substring(0, 100)}...`);
+      return hlsSource.url;
     }
     
-    // Fallback: Use first source with src property
-    const firstSourceWithSrc = sources.find((s: any) => s.src);
-    if (firstSourceWithSrc?.src) {
-      console.log(`[Playback URL] Using first available source: ${firstSourceWithSrc.src.substring(0, 100)}...`);
-      return firstSourceWithSrc.src;
+    // Fallback: Use first source with url property
+    const firstSourceWithUrl = sources.find((s: any) => s.url);
+    if (firstSourceWithUrl?.url) {
+      console.log(`[Playback URL] Using first available source: ${firstSourceWithUrl.url.substring(0, 100)}...`);
+      return firstSourceWithUrl.url;
     }
     
     console.warn('[Playback URL] No usable source found');

@@ -37,7 +37,7 @@ interface VideoPlayerProps {
  * 
  * The player uses getSrc to create proper source configuration from a playback ID.
  */
-export function VideoPlayer({
+export default function VideoPlayer({
   playbackId,
   title = 'Video',
   poster,
@@ -287,4 +287,7 @@ export function VideoPlayer({
     </div>
   );
 }
+
+// Also export as named export for backward compatibility
+export { VideoPlayer };
 

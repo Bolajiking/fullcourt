@@ -29,6 +29,8 @@ const nextConfig: NextConfig = {
     contentDispositionType: 'attachment',
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
+  // Prevent bundling of server-only packages that cause build issues
+  serverExternalPackages: ['pino', 'pino-pretty', 'thread-stream', 'pino-file', '@reown'],
 };
 
 export default nextConfig;

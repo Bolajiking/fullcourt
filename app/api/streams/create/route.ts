@@ -24,9 +24,14 @@ function getLivepeerHeaders() {
  */
 export async function POST(request: NextRequest) {
   try {
+    console.log('Stream creation request received');
+    
     // Check admin access
     const userId = request.headers.get('x-user-id');
+    console.log('User ID from headers:', userId);
+    
     if (!userId || !isAdmin(userId)) {
+      console.error('Unauthorized stream creation attempt');
       return NextResponse.json(
         { error: 'Unauthorized: Admin access required' },
         { status: 403 }
@@ -34,7 +39,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, description, price, isFree } = body;
+    const { title, description, price, isFree, recordEnabled } = body;
+    const record = recordEnabled !== undefined ? Boolean(recordEnabled) : true;
+    console.log('Stream request body:', { title, price, isFree, record });
+    
+    const numericPrice =
+      typeof price === 'number'
+        ? price
+        : parseFloat(price ?? '0') || 0;
 
     if (!title || !title.trim()) {
       return NextResponse.json(
@@ -44,6 +56,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!serverEnv.livepeerApiKey) {
+      console.error('Livepeer API key missing');
       return NextResponse.json(
         { error: 'Livepeer API key not configured' },
         { status: 500 }
@@ -61,145 +74,224 @@ export async function POST(request: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
+      
+    console.log('Existing stream found:', existingStream ? existingStream.id : 'None');
 
-    let streamId: string;
-    let streamKey: string;
-    let rtmpUrl: string;
+    let streamId: string | null = null;
+    let streamKey: string | null = null;
+    let rtmpUrl: string | null = null;
     let playbackId: string | null = null;
 
-    if (existingStream) {
-      // Reuse existing stream
-      streamId = existingStream.livepeer_stream_id;
-      streamKey = existingStream.stream_key;
-      rtmpUrl = existingStream.rtmp_ingest_url;
-      
-      // Fetch current stream details from Livepeer to get playback ID
-      try {
-        const streamResponse = await fetch(`${LIVEPEER_API_URL}/stream/${streamId}`, {
-          method: 'GET',
-          headers: getLivepeerHeaders(),
-        });
-        
-        if (streamResponse.ok) {
-          const livepeerStream = await streamResponse.json();
-          playbackId = livepeerStream.playbackId || livepeerStream.stream?.playbackId || null;
-        }
-      } catch (error) {
-        console.error('Error fetching stream details:', error);
-      }
-    } else {
-      // Create new stream in Livepeer
+    // Helper to create a brand new stream
+    const createNewLivepeerStream = async () => {
+      console.log('Creating new Livepeer stream for user:', userId);
       const streamResponse = await fetch(`${LIVEPEER_API_URL}/stream`, {
         method: 'POST',
         headers: getLivepeerHeaders(),
         body: JSON.stringify({
           name: `Admin Stream - ${userId.substring(0, 8)}`,
-          record: true, // Record the stream for VOD
+          record, // Respect admin toggle
         }),
       });
 
       if (!streamResponse.ok) {
-        const error = await streamResponse.text();
-        console.error('Livepeer API error:', error);
-        return NextResponse.json(
-          { error: `Livepeer stream creation failed: ${streamResponse.statusText}` },
-          { status: 500 }
-        );
+        const errorText = await streamResponse.text();
+        console.error('Livepeer stream creation failed:', streamResponse.status, errorText);
+        throw new Error(`Livepeer stream creation failed: ${streamResponse.statusText} - ${errorText}`);
       }
 
       const livepeerStream = await streamResponse.json();
+      const s = livepeerStream.stream || livepeerStream;
       
-      // Extract stream details from Livepeer response
-      streamId = livepeerStream.id || livepeerStream.stream?.id;
-      streamKey = livepeerStream.streamKey || livepeerStream.stream?.streamKey;
-      rtmpUrl = livepeerStream.rtmpIngestUrl || livepeerStream.stream?.rtmpIngestUrl;
-      playbackId = livepeerStream.playbackId || livepeerStream.stream?.playbackId || null;
-      
-      if (!streamId || !streamKey || !rtmpUrl) {
-        console.error('Livepeer response:', livepeerStream);
+      if (!s.id || !s.streamKey) {
+         console.error('Invalid Livepeer stream response:', livepeerStream);
+         throw new Error('Invalid Livepeer stream response');
+      }
+
+      return {
+        id: s.id,
+        streamKey: s.streamKey,
+        rtmpIngestUrl: s.rtmpIngestUrl,
+        playbackId: s.playbackId
+      };
+    };
+
+    if (existingStream && existingStream.livepeer_stream_id) {
+      // Reuse existing base stream
+      const parentStreamId = existingStream.livepeer_stream_id;
+      console.log(`Attempting to reuse existing stream: ${parentStreamId}`);
+
+      try {
+        const streamResponse = await fetch(`${LIVEPEER_API_URL}/stream/${parentStreamId}`, {
+            method: 'GET',
+            headers: getLivepeerHeaders(),
+        });
+
+        if (!streamResponse.ok) {
+            console.warn(`Parent stream ${parentStreamId} check failed (${streamResponse.status}), creating new stream.`);
+             const newStream = await createNewLivepeerStream();
+             streamId = newStream.id;
+             streamKey = newStream.streamKey;
+             rtmpUrl = newStream.rtmpIngestUrl;
+             playbackId = newStream.playbackId;
+        } else {
+            const parentStream = await streamResponse.json();
+            // Livepeer API response structure check
+            // Based on test script, the root object is the stream
+            streamId = parentStream.id;
+            streamKey = parentStream.streamKey;
+            rtmpUrl = parentStream.rtmpIngestUrl;
+            playbackId = parentStream.playbackId;
+            
+            if (!streamKey) {
+                console.warn('Existing stream returned no streamKey (restricted API key?), creating new stream.');
+                const newStream = await createNewLivepeerStream();
+                streamId = newStream.id;
+                streamKey = newStream.streamKey;
+                rtmpUrl = newStream.rtmpIngestUrl;
+                playbackId = newStream.playbackId;
+            } else {
+                // Update record flag if needed
+                if (typeof parentStream.record === 'boolean' && parentStream.record !== record) {
+                  console.log(`Updating Livepeer stream record flag to ${record}`);
+                  await fetch(`${LIVEPEER_API_URL}/stream/${parentStreamId}`, {
+                    method: 'PATCH',
+                    headers: getLivepeerHeaders(),
+                    body: JSON.stringify({ record }),
+                  }).catch((err) => {
+                    console.warn('Failed to update Livepeer record flag (non-blocking):', err);
+                  });
+                }
+                console.log('Successfully reused existing stream credentials');
+            }
+        }
+      } catch (error) {
+        console.error('Error checking parent stream, falling back to new stream:', error);
+        const newStream = await createNewLivepeerStream();
+        streamId = newStream.id;
+        streamKey = newStream.streamKey;
+        rtmpUrl = newStream.rtmpIngestUrl;
+        playbackId = newStream.playbackId;
+      }
+    } else {
+      // No existing stream, create new one
+      const newStream = await createNewLivepeerStream();
+      streamId = newStream.id;
+      streamKey = newStream.streamKey;
+      rtmpUrl = newStream.rtmpIngestUrl;
+      playbackId = newStream.playbackId;
+    }
+
+    // Ensure we have fallback values if something went wrong but didn't throw
+    if (!streamId || !streamKey) {
+      console.error('Failed to resolve stream credentials, forcing creation of new stream');
+      try {
+        const newStream = await createNewLivepeerStream();
+        streamId = newStream.id;
+        streamKey = newStream.streamKey;
+        rtmpUrl = newStream.rtmpIngestUrl ?? 'rtmp://rtmp.livepeer.studio/live';
+        playbackId = newStream.playbackId;
+      } catch (finalError) {
+        console.error('Final attempt to create stream failed:', finalError);
         return NextResponse.json(
-          { error: 'Failed to get stream details from Livepeer' },
+          { error: 'Failed to obtain valid stream credentials from Livepeer' },
           { status: 500 }
         );
       }
     }
-
-    // Step 2: Create or update stream record in Supabase
-    let stream;
-    let dbError;
     
-    if (existingStream) {
-      // Update existing stream with new session info
-      const { data, error } = await supabase
-        .from('streams')
-        .update({
-          title: title.trim(),
-          description: description?.trim() || null,
-          price_usd: parseFloat(price) || 0,
-          is_free: isFree !== false,
-          is_live: false, // Will be updated when stream goes live
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existingStream.id)
-        .select()
-        .single();
-      
-      stream = data;
-      dbError = error;
-    } else {
-      // Create new stream record
-      const { data, error } = await supabase
-        .from('streams')
-        .insert({
-          title: title.trim(),
-          description: description?.trim() || null,
-          livepeer_stream_id: streamId,
-          rtmp_ingest_url: rtmpUrl,
-          stream_key: streamKey,
-          admin_user_id: userId, // Store admin user ID for reuse
-          price_usd: parseFloat(price) || 0,
-          is_free: isFree !== false,
-          is_live: false, // Will be updated when stream goes live
-        })
-        .select()
-        .single();
-      
-      stream = data;
-      dbError = error;
+    // Final safety check for required fields
+    if (!rtmpUrl) {
+      // If RTMP URL is missing from response, construct it manually or fallback
+      // Standard Livepeer RTMP ingest is consistent
+      rtmpUrl = 'rtmp://rtmp.livepeer.studio/live'; 
     }
 
-    if (dbError) {
-      console.error('Database error:', dbError);
-      // Try to delete the Livepeer stream if database insert fails
-      try {
-        await fetch(`${LIVEPEER_API_URL}/stream/${streamId}`, {
-          method: 'DELETE',
-          headers: getLivepeerHeaders(),
-        });
-      } catch (cleanupError) {
-        console.error('Failed to cleanup Livepeer stream:', cleanupError);
-      }
-      
+    // Step 2: Create or Update stream record in Supabase
+    let data, error;
+
+    if (existingStream) {
+        // Update existing stream record
+        console.log(`Updating existing stream record ${existingStream.id}`);
+        
+        // Construct update object carefully to avoid null constraint violations
+        const updatePayload: any = {
+            title: title.trim(),
+            livepeer_stream_id: streamId, 
+            rtmp_ingest_url: rtmpUrl,
+            stream_key: streamKey,
+            playback_id: playbackId ?? existingStream.playback_id ?? null,
+            record_enabled: record,
+            price_usd: numericPrice,
+            is_free: isFree !== false,
+            is_live: true,
+            updated_at: new Date().toISOString(),
+        };
+        
+        // Only add optional fields if they have values or if DB allows null
+        // Description allows null
+        updatePayload.description = description?.trim() || null;
+
+        const updateResult = await supabase
+            .from('streams')
+            .update(updatePayload)
+            .eq('id', existingStream.id)
+            .select()
+            .single();
+            
+        data = updateResult.data;
+        error = updateResult.error;
+    } else {
+        // Insert new stream record
+        console.log('Inserting new stream record');
+        
+        const insertPayload = {
+            title: title.trim(),
+            description: description?.trim() || null,
+            livepeer_stream_id: streamId, 
+            rtmp_ingest_url: rtmpUrl,
+            stream_key: streamKey,
+            admin_user_id: userId,
+            playback_id: playbackId ?? null,
+            record_enabled: record,
+            price_usd: numericPrice,
+            is_free: isFree !== false,
+            is_live: true,
+        };
+        
+        const insertResult = await supabase
+            .from('streams')
+            .insert(insertPayload)
+            .select()
+            .single();
+            
+        data = insertResult.data;
+        error = insertResult.error;
+    }
+
+    if (error) {
+      console.error('Database error:', error);
       return NextResponse.json(
-        { error: `Database error: ${dbError.message}` },
+        { error: `Database error: ${error.message}` },
         { status: 500 }
       );
     }
 
     return NextResponse.json({
       success: true,
-      streamId: stream.id,
+      streamId: data.id, // Supabase ID
       rtmpUrl,
       streamKey,
-      playbackId: playbackId || null,
-      message: 'Stream created successfully',
+      playbackId,
+      recordEnabled: record,
+      message: 'Stream session ready',
     });
+
   } catch (error) {
-    console.error('Stream creation error:', error);
+    console.error('Stream creation fatal error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
 }
-

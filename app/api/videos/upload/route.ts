@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       description = body.description;
       price = body.price;
       isFree = body.isFree === true;
-      thumbnail = body.thumbnail || null;
+      thumbnail = body.thumbnail || null; // This is base64 data URL
     } else {
       // Legacy approach: FormData (for backward compatibility)
       const formData = await request.formData();
@@ -143,23 +143,63 @@ export async function POST(request: NextRequest) {
     // Client-side upload is much faster as it uploads directly to Livepeer
     // without going through our server, avoiding bandwidth bottlenecks
 
-    // Step 3: Create video record in Supabase
+    // Step 3: Handle thumbnail upload to Supabase Storage (if provided)
     const supabase = getSupabaseAdmin();
+    let thumbnailUrl: string | null = null;
+    
+    if (thumbnail && thumbnail.startsWith('data:')) {
+      try {
+        // Extract base64 data
+        const matches = thumbnail.match(/^data:(.+);base64,(.+)$/);
+        if (matches) {
+          const mimeType = matches[1];
+          const base64Data = matches[2];
+          const buffer = Buffer.from(base64Data, 'base64');
+          
+          // Generate unique filename
+          const extension = mimeType.split('/')[1];
+          const filename = `thumbnails/${assetId}.${extension}`;
+          
+          // Upload to Supabase Storage
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('videos')
+            .upload(filename, buffer, {
+              contentType: mimeType,
+              upsert: true, // Overwrite if exists
+            });
+          
+          if (uploadError) {
+            console.error('[Thumbnail Upload] Error:', uploadError);
+          } else {
+            // Get public URL
+            const { data: { publicUrl } } = supabase.storage
+              .from('videos')
+              .getPublicUrl(filename);
+            
+            thumbnailUrl = publicUrl;
+            console.log('[Thumbnail Upload] Success:', publicUrl);
+          }
+        }
+      } catch (error) {
+        console.error('[Thumbnail Upload] Failed to process base64:', error);
+      }
+    }
     
     // Extract metadata from asset (handle different response structures)
     const playbackId = asset?.playbackIds?.[0]?.id || 
                        assetResult.data?.playbackIds?.[0]?.id ||
                        null;
-    const livepeerThumbnail = asset?.thumbnail?.url || 
-                         assetResult.data?.thumbnail?.url ||
-                         null;
+    
+    // Livepeer's default thumbnail endpoint
+    const livepeerThumbnailUrl = `https://lp-assets.livepeer.studio/api/asset/${assetId}/thumbnail.jpg`;
+    
     const status = asset?.status?.phase === 'ready' || 
                    assetResult.data?.status?.phase === 'ready'
                    ? 'ready' 
                    : 'processing';
 
-    // Use user-provided thumbnail if available, otherwise use Livepeer's auto-generated thumbnail
-    const finalThumbnail = thumbnail || livepeerThumbnail || null;
+    // Prioritize: 1) Uploaded thumbnail URL, 2) Livepeer's standard thumbnail endpoint
+    const finalThumbnail = thumbnailUrl || livepeerThumbnailUrl;
 
     const { data: video, error: dbError } = await supabase
       .from('videos')

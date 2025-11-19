@@ -1,27 +1,10 @@
 import { Navigation } from '@/components/navigation';
 import { Footer } from '@/components/footer';
 import { VideoCard } from '@/components/video-card';
-import { getSupabaseAdmin } from '@/lib/supabase/server';
-
-async function getVideos() {
-  const supabase = getSupabaseAdmin();
-  
-  const { data, error } = await supabase
-    .from('videos')
-    .select('*')
-    .eq('status', 'ready')
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('Error fetching videos:', error);
-    return [];
-  }
-
-  return data || [];
-}
+import { getLivepeerVideos } from '@/lib/video/livepeer-data';
 
 export default async function VideosPage() {
-  const videos = await getVideos();
+  const videos = await getLivepeerVideos(48);
 
   return (
     <div className="flex min-h-screen flex-col bg-black relative overflow-hidden">
@@ -75,7 +58,7 @@ export default async function VideosPage() {
             <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 xl:gap-10">
               {videos.map((video, index) => (
                 <div
-                  key={video.id}
+                  key={video.slug}
                   className="animate-fade-in-up"
                   style={{
                     animationDelay: `${index * 50}ms`,
@@ -83,12 +66,13 @@ export default async function VideosPage() {
                   }}
                 >
                   <VideoCard
-                    id={video.id}
+                    id={video.slug}
+                    href={`/videos/${video.slug}`}
                     title={video.title}
                     description={video.description}
-                    thumbnailUrl={video.thumbnail_url}
-                    priceUsd={video.price_usd}
-                    isFree={video.is_free}
+                    thumbnailUrl={video.thumbnailUrl}
+                    priceUsd={video.priceUsd}
+                    isFree={video.isFree}
                     status={video.status}
                   />
                 </div>

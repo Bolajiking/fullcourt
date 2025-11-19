@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabase/server';
+import { getLivepeerVideos } from '@/lib/video/livepeer-data';
 
 /**
  * GET /api/videos
@@ -7,22 +7,8 @@ import { getSupabaseAdmin } from '@/lib/supabase/server';
  */
 export async function GET() {
   try {
-    const supabase = getSupabaseAdmin();
-    
-    const { data, error } = await supabase
-      .from('videos')
-      .select('*')
-      .eq('status', 'ready')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ videos: data || [] });
+    const videos = await getLivepeerVideos(100);
+    return NextResponse.json({ videos });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },

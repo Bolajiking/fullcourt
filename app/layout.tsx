@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { PrivyProvider } from "@/lib/auth/privy-provider";
 import { LivepeerProvider } from "@/lib/video/livepeer-provider";
+import { ErrorSuppressor } from "@/components/error-suppressor";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,6 +30,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <ErrorSuppressor />
         <PrivyProvider>
           <LivepeerProvider>
         {children}

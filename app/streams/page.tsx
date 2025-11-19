@@ -1,26 +1,20 @@
 import { Navigation } from '@/components/navigation';
 import { Footer } from '@/components/footer';
-import { getSupabase } from '@/lib/supabase/client';
+import { getLivepeerStreams, getRecordedSessions } from '@/lib/video/livepeer-data';
 import Link from 'next/link';
-
-async function getStreams() {
-  const supabase = getSupabase();
-  
-  const { data, error } = await supabase
-    .from('streams')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('Error fetching streams:', error);
-    return [];
-  }
-
-  return data || [];
-}
+import { VideoPlayer } from '@/components/video-player';
+import { getPlaybackSrc } from '@/lib/video/livepeer-utils';
 
 export default async function StreamsPage() {
-  const streams = await getStreams();
+  const streams = await getLivepeerStreams();
+  const activeStream = streams.find((stream) => stream.isActive && stream.playbackId);
+  
+  // Fetch recorded sessions that are NOT managed in the videos table
+  // These are the raw recordings from past livestreams
+  const recordedSessions = await getRecordedSessions(12);
+  
+  const activeStreamSrc =
+    activeStream?.playbackId ? await getPlaybackSrc(activeStream.playbackId) : null;
 
   return (
     <div className="flex min-h-screen flex-col bg-zinc-50 dark:bg-black">
@@ -37,7 +31,7 @@ export default async function StreamsPage() {
             </p>
           </div>
 
-          {streams.length === 0 ? (
+          {!activeStream ? (
             <div className="rounded-lg border border-zinc-200 bg-white p-12 text-center dark:border-zinc-800 dark:bg-black">
               <svg
                 className="mx-auto h-12 w-12 text-zinc-400"
@@ -60,40 +54,112 @@ export default async function StreamsPage() {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {streams.map((stream) => (
+            <div className="mb-12 rounded-xl border border-red-500/30 bg-gradient-to-br from-black to-[#0a0a0a] p-6 shadow-2xl shadow-red-500/20">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <div className="mb-2 flex items-center gap-3">
+                    <span className="relative flex h-4 w-4">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500"></span>
+                    </span>
+                    <span className="text-sm font-black text-red-400 uppercase tracking-wider">
+                      Live now
+                    </span>
+                  </div>
+                  <h2 className="text-3xl font-black text-white">{activeStream.title}</h2>
+                  {activeStream.description && (
+                    <p className="mt-2 text-white/70">{activeStream.description}</p>
+                  )}
+                </div>
                 <Link
-                  key={stream.id}
-                  href={`/streams/${stream.id}`}
-                  className="group relative overflow-hidden rounded-lg bg-white shadow-sm transition-shadow hover:shadow-md dark:bg-black"
+                  href={`/streams/${activeStream.slug}`}
+                  className="px-5 py-3 rounded-lg font-semibold text-white bg-gradient-to-r from-red-500 to-orange-500 hover:scale-105 transition-transform"
                 >
-                  <div className="relative aspect-video w-full bg-zinc-100 dark:bg-zinc-900">
-                    {stream.is_live ? (
-                      <div className="absolute left-2 top-2 flex items-center gap-2 rounded-md bg-red-600 px-2 py-1">
-                        <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
-                        <span className="text-xs font-medium text-white">LIVE</span>
-                      </div>
-                    ) : null}
-                    {!stream.is_free && (
-                      <div className="absolute right-2 top-2 rounded-md bg-black/80 px-2 py-1 text-xs font-medium text-white">
-                        ${stream.price_usd.toFixed(2)}
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-4">
-                    <h3 className="line-clamp-2 text-lg font-semibold text-black group-hover:text-zinc-600 dark:text-white dark:group-hover:text-zinc-300">
-                      {stream.title}
-                    </h3>
-                    {stream.description && (
-                      <p className="mt-2 line-clamp-2 text-sm text-zinc-600 dark:text-zinc-400">
-                        {stream.description}
-                      </p>
-                    )}
-                  </div>
+                  View Details →
                 </Link>
-              ))}
+              </div>
+              <div className="rounded-xl overflow-hidden border border-white/10">
+                <VideoPlayer
+                  playbackId={activeStream.playbackId ?? activeStream.livepeerStreamId}
+                  title={activeStream.title}
+                  type="live"
+                  showControls
+                  initialSrc={activeStreamSrc}
+                />
+              </div>
             </div>
           )}
+
+          <div className="mt-8">
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-black dark:text-white">
+                  Recorded Sessions
+                </h2>
+                <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                  Replays from past livestreams
+                </p>
+              </div>
+            </div>
+
+            {recordedSessions.length === 0 ? (
+              <div className="rounded-lg border border-zinc-200 bg-white p-10 text-center dark:border-zinc-800 dark:bg-black">
+                <p className="text-zinc-600 dark:text-zinc-400">
+                  No recorded sessions yet. Enable “Record this session” when starting a stream to
+                  keep replays.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {recordedSessions.map((session) => (
+                  <Link
+                    key={session.slug}
+                    href={`/streams/${session.slug}`}
+                    className="group relative overflow-hidden rounded-lg bg-white shadow-sm transition-shadow hover:shadow-md dark:bg-black"
+                  >
+                    <div className="relative aspect-video w-full bg-zinc-100 dark:bg-zinc-900">
+                      {!session.isFree && (
+                        <div className="absolute right-2 top-2 rounded-md bg-black/80 px-2 py-1 text-xs font-medium text-white z-10">
+                          ${session.priceUsd.toFixed(2)}
+                        </div>
+                      )}
+                      {session.thumbnailUrl ? (
+                         <div
+                          className="h-full w-full bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
+                          style={{ backgroundImage: `url(${session.thumbnailUrl})` }}
+                        >
+                          <div className="h-full w-full bg-gradient-to-t from-black/60 via-transparent to-transparent"></div>
+                        </div>
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-zinc-800">
+                           <span className="text-zinc-500">No Preview</span>
+                        </div>
+                      )}
+                      
+                      {/* Play Button Overlay */}
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                        <div className="rounded-full bg-red-600 p-3 shadow-lg transform transition-transform duration-300 hover:scale-110">
+                          <svg className="h-6 w-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="p-4">
+                      <h3 className="line-clamp-2 text-lg font-semibold text-black group-hover:text-red-600 transition-colors dark:text-white dark:group-hover:text-red-500">
+                        {session.title}
+                      </h3>
+                      {session.createdAt && (
+                        <p className="mt-2 text-xs text-zinc-500">
+                          Recorded {new Date(session.createdAt).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </main>
 
@@ -101,4 +167,3 @@ export default async function StreamsPage() {
     </div>
   );
 }
-

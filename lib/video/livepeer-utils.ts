@@ -1,6 +1,14 @@
 import { serverEnv } from '@/lib/env';
 import { getSupabaseAdmin } from '@/lib/supabase/server';
 import { Livepeer } from 'livepeer';
+import { getSrc } from '@livepeer/react/external';
+import type { Src } from '@livepeer/react';
+
+const buildHlsSrc = (url: string): Src =>
+  ({
+    src: url,
+    type: 'application/vnd.apple.mpegurl',
+  } as unknown as Src);
 
 /**
  * Livepeer API utilities
@@ -26,36 +34,39 @@ function getLivepeerClient() {
  * Note: Livepeer SDK v3.5.0 uses asset.get() method
  * Asset IDs can be used as-is (they may or may not have 'asset-' prefix)
  */
+async function fetchLivepeerAssetViaRest(assetId: string) {
+  if (!serverEnv.livepeerApiKey) {
+    throw new Error('Livepeer API key not configured');
+  }
+  const response = await fetch(`https://livepeer.studio/api/asset/${assetId}`, {
+    headers: {
+      Authorization: `Bearer ${serverEnv.livepeerApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Livepeer REST asset error ${response.status}: ${body}`);
+  }
+  const data = await response.json();
+  return data?.asset || data?.data || data;
+}
+
 export async function getLivepeerAsset(assetId: string) {
   const livepeer = getLivepeerClient();
   
-  // Try the asset ID as-is first (SDK should handle the format)
-  // If that fails with 500, the asset might not exist or be invalid
   try {
-    // Use SDK's asset.get method - pass asset ID as-is
-    // The SDK should handle the correct format internally
     const result = await livepeer.asset.get(assetId);
-    
-    // SDK v3.5.0 returns: { asset: {...} } or { data: { asset: {...} } }
-    // Handle different response structures
     const asset = result.asset || result.data?.asset || result.data;
     
     if (!asset) {
-      console.error('[Livepeer Asset] No asset found in response:', {
-        assetId,
-        resultKeys: Object.keys(result),
-        resultType: typeof result,
-        fullResult: JSON.stringify(result).substring(0, 500),
-      });
       throw new Error(`Asset not found: ${assetId}`);
     }
     
-    // Log asset structure for debugging
     if (process.env.NODE_ENV === 'development') {
-      console.log('[Livepeer Asset] Successfully fetched:', {
+      console.log('[Livepeer Asset] Successfully fetched via SDK:', {
         assetId,
-        hasAsset: !!result.asset,
-        hasData: !!result.data,
         hasPlaybackIds: !!asset.playbackIds,
         playbackIdsLength: asset.playbackIds?.length || 0,
         status: asset.status?.phase || asset.status,
@@ -64,47 +75,28 @@ export async function getLivepeerAsset(assetId: string) {
     
     return asset;
   } catch (error: any) {
-    // Enhanced error logging with SDK error details
-    const errorInfo: any = {
+    console.warn('[Livepeer Asset] SDK fetch failed, attempting REST fallback:', {
       assetId,
-      errorType: error?.constructor?.name || typeof error,
-      errorMessage: error?.message || String(error),
-    };
+      error: error?.message || error,
+    });
     
-    // SDK errors may have additional properties
-    if (error?.status) errorInfo.status = error.status;
-    if (error?.statusText) errorInfo.statusText = error.statusText;
-    if (error?.statusCode) errorInfo.statusCode = error.statusCode;
-    
-    // Try to extract error details from SDK error
-    if (error?.body) {
-      try {
-        // Limit error body to first 500 chars to avoid huge logs
-        const errorBodyStr = typeof error.body === 'string' 
-          ? error.body 
-          : JSON.stringify(error.body);
-        errorInfo.errorBody = errorBodyStr.substring(0, 500);
-      } catch {
-        errorInfo.errorBody = 'Could not stringify error body';
+    try {
+      const asset = await fetchLivepeerAssetViaRest(assetId);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[Livepeer Asset] Successfully fetched via REST fallback:', {
+          assetId,
+          hasPlaybackIds: !!asset?.playbackIds,
+          status: asset?.status?.phase || asset?.status,
+        });
       }
+      return asset;
+    } catch (restError) {
+      console.error('[Livepeer Asset] REST fallback failed:', {
+        assetId,
+        error: restError instanceof Error ? restError.message : restError,
+      });
+      throw restError;
     }
-    
-    // For 500 errors, the asset might not exist or Livepeer API is having issues
-    // For 404 errors, the asset definitely doesn't exist
-    if (error?.status === 404 || error?.statusCode === 404) {
-      console.warn('[Livepeer Asset] Asset not found (404):', errorInfo);
-      throw new Error(`Asset not found: ${assetId}`);
-    }
-    
-    if (error?.status === 500 || error?.statusCode === 500) {
-      console.error('[Livepeer Asset] Livepeer API error (500):', errorInfo);
-      // For 500 errors, the asset might not exist yet or there's an API issue
-      // We'll throw the error but the caller can handle it gracefully
-      throw new Error(`Livepeer API error: Asset ${assetId} may not exist or API is unavailable`);
-    }
-    
-    console.error('[Livepeer Asset] Error fetching asset:', errorInfo);
-    throw error;
   }
 }
 
@@ -114,27 +106,36 @@ export async function getLivepeerAsset(assetId: string) {
  * Returns the full playback info object with sources
  */
 export async function getPlaybackInfo(playbackId: string): Promise<any | null> {
+  if (!serverEnv.livepeerApiKey) {
+    console.warn('[Playback Info] Missing Livepeer API key');
+    return null;
+  }
+
   try {
-    console.log(`[Playback Info] Fetching playback info for: ${playbackId}`);
-    const livepeer = getLivepeerClient();
-    
-    // Use Livepeer SDK to get playback info (like the working example)
-    const result = await livepeer.playback.get(playbackId);
-    
-    if (!result.playbackInfo) {
-      console.error('[Playback Info] Error fetching playback info', result);
+    const response = await fetch(`https://livepeer.studio/api/playback/${playbackId}`, {
+      headers: {
+        Authorization: `Bearer ${serverEnv.livepeerApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error('[Playback Info] Livepeer playback API error:', response.status, text);
       return null;
     }
-    
-    console.log('[Playback Info] Successfully fetched playback info:', {
-      hasPlaybackInfo: !!result.playbackInfo,
-      hasMeta: !!result.playbackInfo?.meta,
-      hasSource: !!(result.playbackInfo?.meta?.source),
-    });
-    
-    return result.playbackInfo;
+
+    const playbackInfo = await response.json();
+
+    if (!playbackInfo) {
+      console.warn('[Playback Info] Empty playback response for', playbackId);
+      return null;
+    }
+
+    return playbackInfo;
   } catch (error: any) {
-    console.error('[Playback Info] Error:', {
+    console.error('[Playback Info] Error fetching playback info:', {
       playbackId,
       error: error?.message || String(error),
     });
@@ -157,11 +158,16 @@ export async function getPlaybackUrl(playbackId: string): Promise<string | null>
     }
     
     // Extract HLS URL from playback info
-    const sources = playbackInfo.meta?.source || [];
+    const sources =
+      playbackInfo.meta?.source ||
+      playbackInfo.meta?.sources ||
+      playbackInfo.source ||
+      playbackInfo.sources ||
+      [];
     
     if (!Array.isArray(sources) || sources.length === 0) {
       console.warn('[Playback URL] No sources found in playback info');
-      return null;
+      return `https://livepeercdn.com/hls/${playbackId}/index.m3u8`;
     }
     
     // Find HLS source (SDK returns 'url' not 'src')
@@ -185,14 +191,32 @@ export async function getPlaybackUrl(playbackId: string): Promise<string | null>
     }
     
     console.warn('[Playback URL] No usable source found');
-    return null;
+    return `https://livepeercdn.com/hls/${playbackId}/index.m3u8`;
   } catch (error: any) {
     console.error('[Playback URL] Error fetching playback URL:', {
       playbackId,
       error: error?.message || String(error),
     });
-    return null;
+    // Last resort fallback to CDN pattern
+    return `https://livepeercdn.com/hls/${playbackId}/index.m3u8`;
   }
+}
+
+export async function getPlaybackSrc(playbackId: string): Promise<Src[] | null> {
+  const playbackInfo = await getPlaybackInfo(playbackId);
+  if (playbackInfo) {
+    try {
+      const src = getSrc(playbackInfo);
+      if (Array.isArray(src) && src.length > 0) {
+        return src;
+      }
+    } catch (error) {
+      console.warn('[Playback Src] getSrc failed, falling back to CDN URL:', error);
+    }
+  }
+
+  const fallbackUrl = `https://livepeercdn.studio/hls/${playbackId}/index.m3u8`;
+  return [buildHlsSrc(fallbackUrl)];
 }
 
 /**
@@ -327,12 +351,24 @@ export async function updateVideoStatusFromLivepeer(
     const updateData: any = { status };
     
     // Update thumbnail if available (check multiple possible locations)
-    const thumbnailUrl = asset.thumbnailUrl || 
-                         asset.thumbnail?.url || 
-                         asset.data?.thumbnailUrl ||
-                         asset.data?.thumbnail?.url;
+    const apiThumbnailUrl = asset.thumbnailUrl || 
+                            asset.thumbnail?.url || 
+                            asset.data?.thumbnailUrl ||
+                            asset.data?.thumbnail?.url;
     
-    if (thumbnailUrl) {
+    // Use API thumbnail if available, otherwise construct Livepeer's standard thumbnail URL
+    const thumbnailUrl = apiThumbnailUrl || `https://lp-assets.livepeer.studio/api/asset/${livepeerAssetId}/thumbnail.jpg`;
+    
+    // Only update thumbnail_url if it's currently null/empty in the DB
+    // This prevents overwriting user-provided custom thumbnails
+    const { data: currentVideo } = await supabase
+      .from('videos')
+      .select('thumbnail_url')
+      .eq('id', videoId)
+      .single();
+    
+    if (!currentVideo?.thumbnail_url || currentVideo.thumbnail_url.startsWith('data:')) {
+      // Update if no thumbnail exists, or if it's a base64 that should be replaced
       updateData.thumbnail_url = thumbnailUrl;
     }
 
@@ -379,6 +415,11 @@ export async function getLivepeerStream(streamId: string) {
     // SDK returns: { stream: {...} } or { data: { stream: {...} } }
     return result.stream || result.data?.stream || result.data || result;
   } catch (error: any) {
+    // Suppress 404 errors as they are expected when checking if an ID is a stream vs asset
+    if (error?.status === 404 || error?.message?.includes('not found') || error?.body?.errors?.[0] === 'not found') {
+      return null;
+    }
+
     console.error('Error fetching Livepeer stream:', {
       streamId,
       error: error?.message || String(error),
@@ -417,6 +458,24 @@ export async function updateStreamStatusFromLivepeer(
     return { isLive, stream };
   } catch (error) {
     console.error('Error updating stream status from Livepeer:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete an asset from Livepeer
+ */
+export async function deleteLivepeerAsset(assetId: string) {
+  try {
+    const livepeer = getLivepeerClient();
+    await livepeer.asset.delete(assetId);
+    console.log(`[Livepeer] Deleted asset: ${assetId}`);
+    return true;
+  } catch (error: any) {
+    console.error('Error deleting Livepeer asset:', {
+      assetId,
+      error: error?.message || String(error),
+    });
     throw error;
   }
 }

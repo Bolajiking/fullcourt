@@ -20,7 +20,13 @@ import {
   LiveIndicator,
 } from '@livepeer/react/player';
 import type { Src } from '@livepeer/react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+
+const buildHlsSrc = (url: string): Src =>
+  ({
+    src: url,
+    type: 'application/vnd.apple.mpegurl',
+  } as unknown as Src);
 
 interface VideoPlayerProps {
   playbackId: string;
@@ -29,6 +35,7 @@ interface VideoPlayerProps {
   autoPlay?: boolean;
   showControls?: boolean;
   type?: 'vod' | 'live';
+  initialSrc?: Src[] | null;
 }
 
 /**
@@ -44,21 +51,31 @@ export default function VideoPlayer({
   autoPlay = false,
   showControls = true,
   type = 'vod',
+  initialSrc = null,
 }: VideoPlayerProps) {
-  const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
-  const [isLoadingUrl, setIsLoadingUrl] = useState(true);
+  const [source, setSource] = useState<Src[] | null>(initialSrc);
+  const [isLoadingSource, setIsLoadingSource] = useState(!initialSrc);
   const [error, setError] = useState<string | null>(null);
+  const mountTimeRef = useRef(Date.now());
   
   // Fetch the playback URL from our API (which uses the Livepeer SDK)
   useEffect(() => {
     if (!playbackId) {
-      setIsLoadingUrl(false);
+      setIsLoadingSource(false);
+      return;
+    }
+
+    if (initialSrc) {
+      setSource(initialSrc);
+      setIsLoadingSource(false);
       return;
     }
     
     const trimmedPlaybackId = playbackId.trim();
     console.log('[Video Player] Fetching playback URL for:', trimmedPlaybackId);
     
+    const fallbackCdnUrl = `https://livepeercdn.studio/hls/${trimmedPlaybackId}/index.m3u8`;
+
     fetch(`/api/videos/playback-url?playbackId=${encodeURIComponent(trimmedPlaybackId)}`)
       .then(async (response) => {
         if (!response.ok) {
@@ -71,26 +88,29 @@ export default function VideoPlayer({
       .then((data) => {
         if (data.playbackUrl) {
           console.log('[Video Player] Fetched playback URL:', data.playbackUrl.substring(0, 100) + '...');
-          setPlaybackUrl(data.playbackUrl);
+          setSource([buildHlsSrc(data.playbackUrl)]);
+          setError(null);
         } else {
-          console.warn('[Video Player] No playback URL in response');
-          setError('Video source not available');
+          console.warn('[Video Player] No playback URL in response, falling back to CDN');
+          setSource([buildHlsSrc(fallbackCdnUrl)]);
+          setError(null);
         }
       })
       .catch((err) => {
-        console.error('[Video Player] Error fetching playback URL:', err);
-        setError(err.message || 'Failed to load video');
+        console.error('[Video Player] Error fetching playback URL, using fallback CDN URL:', err);
+        setSource([buildHlsSrc(fallbackCdnUrl)]);
+        setError(null);
       })
       .finally(() => {
-        setIsLoadingUrl(false);
+        setIsLoadingSource(false);
       });
-  }, [playbackId]);
+  }, [playbackId, initialSrc]);
   
   // Create source array for the player
-  const src: Src[] | null = playbackUrl ? [playbackUrl as any] : null;
+  const src: Src[] | null = source;
   
   // Show loading state while fetching URL
-  if (isLoadingUrl) {
+  if (isLoadingSource) {
     return (
       <div className="flex aspect-video w-full items-center justify-center rounded-xl bg-gradient-to-br from-black to-[#0a0a0a] border border-white/10">
         <div className="text-center">
@@ -139,8 +159,50 @@ export default function VideoPlayer({
         src={src}
         autoPlay={autoPlay}
         onError={(error) => {
-          console.error('[Video Player] Player error:', error);
-          setError(error?.message || 'Playback error occurred');
+          // Livepeer player fires benign errors while warming up live streams
+          // These should be completely ignored to avoid alarming users
+          
+          if (!error) return; // null/undefined
+          
+          // Ignore ALL errors in the first 10 seconds (warmup period for live streams)
+          const timeSinceMount = Date.now() - mountTimeRef.current;
+          if (type === 'live' && timeSinceMount < 10000) {
+            // Live streams need time to connect - ignore all errors during warmup
+            return;
+          }
+          
+          const errorType = (error as any)?.type;
+          const errorMessage = (error as any)?.message || '';
+          const errorCode = (error as any)?.code;
+          
+          // Check if error is essentially empty (common during stream initialization)
+          const errorJson = JSON.stringify(error);
+          const isEmptyError = errorJson === '{}' || errorJson === '[]';
+          
+          // Check for the specific "canPlay timeout" error
+          const isCanPlayTimeout = errorMessage.toLowerCase().includes('canplay') || 
+                                   errorMessage.toLowerCase().includes('timeout');
+          
+          // Ignore all benign error types:
+          if (
+            errorType === 'timeout' ||           // Timeout type
+            errorCode === 'timeout' ||           // Timeout code
+            isCanPlayTimeout ||                  // canPlay timeout message
+            (!errorType && !errorMessage) ||     // No type or message
+            isEmptyError                         // Completely empty object
+          ) {
+            // Silently ignore - these are expected during live stream warmup
+            return;
+          }
+          
+          // Only log and show UI errors for actual playback failures
+          console.error('[Video Player] Playback error:', {
+            type: errorType,
+            message: errorMessage,
+            code: errorCode,
+            error
+          });
+          setError(errorMessage || 'Playback error occurred');
         }}
       >
         <Container className="aspect-video w-full rounded-xl overflow-hidden bg-black border border-white/10">

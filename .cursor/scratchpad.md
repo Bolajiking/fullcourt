@@ -2,128 +2,103 @@
 
 ## Background and Motivation
 
-Full Court is a video streaming and content monetization platform that allows users to:
-- Upload and stream video content (VOD and live streaming via Livepeer)
-- Monetize content through paid access
-- Sell physical products (e-commerce)
-- Authenticate users via Privy (Web3 wallet authentication)
-- Process payments on blockchain (Base chain)
+Full Court is a premium basketball streaming platform where:
+- Livepeer powers VOD uploads and live streams (primary source of truth for playable media)
+- Supabase stores supplemental metadata, commerce data, and user information
+- Privy handles authentication and wallet-aware experiences
 
-**Completed:**
-- ✅ Supabase database setup and migrations
-- ✅ Environment variables configured
+**Current focus:** Empower admins with full content management capabilities.
+- Admins need to **delete** mistakes (both videos and recorded sessions).
+- Admins need to **edit** metadata (titles, descriptions, prices) for uploaded videos.
+- Actions must sync across both **Livepeer** (source of truth) and **Supabase** (metadata) to ensure consistency.
 
-**Next Steps:**
-- Set up authentication providers (Privy)
-- Set up video streaming providers (Livepeer)
-- Create application structure and routing
-- Build core features (video upload, streaming, e-commerce)
+**Recently completed milestones**
+- ✅ All Phase 8 livestream enhancements (playback, error suppression, page organization)
+- ✅ Fast load times and clear content separation
+- ✅ Global error suppression for cleaner console logs
+
+**New priority**
+- **Admin Delete:** Allow deleting videos and recorded stream sessions. This must delete the asset from Livepeer AND the record from Supabase.
+- **Admin Edit:** Allow editing video details (title, description, price, etc.).
+- **Sync:** Ensure operations update both Livepeer and Supabase.
 
 ## Key Challenges and Analysis
 
-- Environment variables need to be properly configured
-- Database migrations need to be run in Supabase dashboard
-- Connection needs to be tested to ensure everything works
+- **Dual-Write Consistency:** Deleting a video means deleting the Livepeer Asset ID + Supabase Row. If one fails, we might end up with orphaned data. We should try to delete both, or delete Livepeer first (since it costs money/storage) then Supabase.
+- **Recorded Sessions vs Uploaded Videos:** 
+  - Uploaded videos have a Supabase `videos` row.
+  - Recorded sessions might *only* exist as Livepeer Assets (if they weren't "saved" to Supabase, though our current flow tries to create records for everything? No, raw recordings don't have `videos` rows). 
+  - **Crucially:** If we want to manage "Recorded Sessions", we are essentially managing raw Livepeer Assets that don't have Supabase metadata.
+  - **Constraint:** The user wants to delete "livestream recorded sessions". These appear on `/streams`. They are just Assets in Livepeer.
+  - **Strategy:** We need an Admin UI that lists *all* assets (or specifically the ones identified as recordings) and allows deletion.
+- **Edit Functionality:** Only applies to things with metadata (Supabase records).
+- **Security:** All these endpoints must be strictly gated by `isAdmin` checks.
 
 ## High-level Task Breakdown
 
-### Phase 1: Infrastructure Setup ✅
-- [x] Task 1: Verify Environment Variables
-- [x] Task 2: Test Supabase Connection
-- [x] Task 3: Run Database Migrations
-- [x] Task 4: Verify Database Schema
+### Phase 9: Admin Content Management
 
-### Phase 2: Core Providers Setup
-- [ ] Task 5: Set up Privy Authentication Provider
-  - **Status**: Pending
-  - **Success Criteria**:
-    - Privy provider created and integrated in layout
-    - Authentication working (login/logout)
-    - User can connect wallet
-    - User ID accessible throughout app
+1. **Server-side Delete Utilities**
+   - **Goal:** Create functions to delete assets from Livepeer and rows from Supabase.
+   - **Success Criteria:** `deleteVideo(id)` deletes from both; `deleteAsset(livepeerId)` deletes from Livepeer.
 
-- [ ] Task 6: Set up Livepeer Video Provider
-  - **Status**: Pending
-  - **Success Criteria**:
-    - Livepeer provider created and integrated
-    - Video player component working
-    - Can upload/stream videos
-    - Integration with Supabase for video metadata
+2. **Server-side Edit Utilities**
+   - **Goal:** Create functions to update Supabase video metadata.
+   - **Success Criteria:** `updateVideo(id, data)` updates Supabase row.
 
-### Phase 3: Application Structure
-- [ ] Task 7: Create Application Layout and Navigation
-  - **Status**: Pending
-  - **Success Criteria**:
-    - Modern, responsive layout
-    - Navigation header with auth state
-    - Footer
-    - Proper metadata and SEO
+3. **Admin Management UI**
+   - **Goal:** Create a "Manage Content" tab/section in the Admin Dashboard.
+   - **Success Criteria:**
+     - List of Uploaded Videos with Edit/Delete buttons.
+     - List of Recorded Sessions with Delete buttons.
+     - Edit modal/form for videos.
+     - Confirmation dialog for deletions.
 
-- [ ] Task 8: Create Homepage
-  - **Status**: Pending
-  - **Success Criteria**:
-    - Landing page with featured content
-    - Video grid/list view
-    - Search functionality
-    - Responsive design
-
-### Phase 4: Core Features
-- [ ] Task 9: Video Management (Upload, View, List)
-- [ ] Task 10: Live Streaming
-- [ ] Task 11: E-commerce (Products, Cart, Checkout)
-- [ ] Task 12: User Profiles
+4. **API Routes**
+   - **Goal:** Secure endpoints for these actions.
+   - **Success Criteria:** 
+     - `DELETE /api/admin/assets/[id]`
+     - `PATCH /api/admin/videos/[id]`
+     - All checks `isAdmin`.
 
 ## Project Status Board
 
-### Phase 1: Infrastructure ✅
-- [x] Environment variables inputted by user
-- [x] Verify environment variables are loaded correctly
-- [x] Test Supabase connection (direct test successful)
-- [x] Run database migrations (completed by user)
-- [x] Verify all tables are created (all 6 tables verified)
+### Phase 1-8: Infrastructure & Core Features ✅ (Completed)
+- (See previous logs for details)
 
-### Phase 2: Core Providers ✅
-- [x] Set up Privy Authentication Provider
-- [x] Set up Livepeer Video Provider
-
-### Phase 3: Application Structure ✅
-- [x] Create Navigation component
-- [x] Create Footer component
-- [x] Update Homepage with modern design
-- [x] Create video listing pages
-- [x] Add video player component
-- [x] Create individual video view pages
-- [x] Create API routes for video management
-
-### Phase 4: Core Features (In Progress)
-- [x] Video listing and viewing
-- [x] User profiles
-- [x] E-commerce placeholder (coming soon)
-- [x] Video upload functionality
-- [x] Live streaming setup
-- [ ] Payment/access control
-
-### Phase 5: Creator/Admin Experience
-- [x] Creator dashboard with admin tools
-- [x] Product management interface
-- [ ] Unified workflow for uploads and livestreams
+### Phase 9: Admin Content Management (In Progress)
+- [ ] Implement server-side delete/edit logic
+- [ ] Create Admin Management UI Components
+- [ ] Implement Delete/Edit API routes
+- [ ] Integrate into Admin Dashboard
 
 ## Current Status / Progress Tracking
 
-**Current Task**: Project running in development mode ✅
+**Current Task**: ✅ Phase 9 COMPLETE - Admin Content Management
 
-**Last Updated**: Development server started successfully
+**Last Updated**: Implemented full Delete/Edit capabilities for admin
 
 **Status**: 
-- ✅ Environment variables are correctly configured
-- ✅ Supabase connection tested and working
-- ✅ Database migrations completed successfully
-- ✅ All 6 tables verified: videos, streams, products, orders, user_content_access, user_profiles
-- ✅ Privy authentication provider set up and integrated
-- ✅ Livepeer video provider set up and integrated
-- ✅ Navigation and footer components created
-- ✅ Homepage updated with modern design
-- ⚠️  Build error with Turbopack (dependency issue, not blocking development)
+- ✅ All previous checks pass
+- ✅ Created `deleteLivepeerAsset` utility
+- ✅ Implemented `DELETE /api/admin/assets/[id]` for recorded sessions
+- ✅ Implemented `DELETE /api/admin/videos/[id]` for uploaded videos (dual-delete)
+- ✅ Implemented `PATCH /api/admin/videos/[id]` for video metadata editing
+- ✅ Created `ContentManager` UI component
+- ✅ Integrated Content Manager into Admin Dashboard
+- ✅ Secured all endpoints with `isAdmin` checks
+
+### Phase 9 Progress (COMPLETED)
+- ✅ Server-side delete utilities (Livepeer + Supabase)
+- ✅ Server-side edit utilities (Supabase)
+- ✅ Admin API endpoints (GET content, DELETE, PATCH)
+- ✅ Admin Dashboard UI for managing content
+- ✅ "Dual-write" consistency for deletions (Livepeer first, then DB)
+
+### Next Steps
+- User testing of admin workflows
+- Implement "Live Chat" features (Phase 10?)
+- Analytics and Payment integration
 
 ## Project Running Status
 
@@ -281,4 +256,7 @@ Full Court is a video streaming and content monetization platform that allows us
 - Read the file before you try to edit it
 - If there are vulnerabilities that appear in the terminal, run npm audit before proceeding
 - Always ask before using the -force git command
-
+- **Livepeer Player Errors:** The Livepeer player emits empty `{}` error objects and "timeout" errors during live stream warmup. These are benign and should be silently ignored. Only log/display errors that have both a `type` and `message` property for actual playback failures.
+- **Database Schema Verification:** Always verify that migrations have been applied before debugging application errors. Use verification scripts to check for column existence in Supabase.
+- **Livestream Resilience:** Always persist playback IDs in Supabase as a fallback cache. If Livepeer APIs fail at runtime, auto-fetch missing playback IDs from the stream object and store them for future use.
+- **Server-side Playback Sources:** For optimal performance, fetch Livepeer playback sources (`Src[]`) on the server and pass them as props to client components, minimizing client-side API calls.

@@ -10,6 +10,8 @@ import { VideoUploadForm } from '@/components/admin/video-upload-form';
 import { StreamCreateForm } from '@/components/admin/stream-create-form';
 import { ProductCreateForm } from '@/components/admin/product-create-form';
 
+import { ContentManager } from '@/components/admin/content-manager';
+
 interface Stats {
   videos: number;
   streams: number;
@@ -38,25 +40,32 @@ export default function AdminPage() {
   async function fetchData() {
     setLoading(true);
     try {
+      // Fetch actual content counts from the same source as public pages
+      const contentRes = await fetch('/api/admin/content');
+      const contentData = contentRes.ok ? await contentRes.json() : { videos: [], recordings: [] };
+      
       const supabase = getSupabase();
-
-      const [videoCount, streamCount, productCount, videos, streams, products] = await Promise.all([
-        supabase.from('videos').select('*', { count: 'exact', head: true }),
+      
+      // For streams and products, use Supabase counts (they don't have Livepeer filtering issues)
+      const [streamCount, productCount, streams, products] = await Promise.all([
         supabase.from('streams').select('*', { count: 'exact', head: true }),
         supabase.from('products').select('*', { count: 'exact', head: true }),
-        supabase.from('videos').select('*').order('created_at', { ascending: false }).limit(5),
         supabase.from('streams').select('*').order('created_at', { ascending: false }).limit(5),
         supabase.from('products').select('*').order('created_at', { ascending: false }).limit(5),
       ]);
 
       setStats({
-        videos: videoCount.count || 0,
+        videos: contentData.videos?.length || 0, // Use actual Livepeer count
         streams: streamCount.count || 0,
         products: productCount.count || 0,
       });
 
       setLatest({
-        videos: videos.data || [],
+        videos: contentData.videos?.slice(0, 5).map((v: any) => ({
+          id: v.supabaseId || v.slug,
+          title: v.title,
+          created_at: v.createdAt
+        })) || [],
         streams: streams.data || [],
         products: products.data || [],
       });
@@ -186,31 +195,9 @@ export default function AdminPage() {
             </div>
           </div>
 
-          {/* Latest activity */}
-          <div className="mt-12 grid grid-cols-1 gap-6 lg:grid-cols-3">
-            {['videos', 'streams', 'products'].map((type) => (
-              <div key={type} className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-black">
-                <h3 className="text-lg font-semibold capitalize text-black dark:text-white">
-                  Latest {type}
-                </h3>
-                {loading ? (
-                  <p className="mt-4 text-sm text-zinc-600 dark:text-zinc-400">Loading...</p>
-                ) : latest[type as keyof LatestData].length === 0 ? (
-                  <p className="mt-4 text-sm text-zinc-600 dark:text-zinc-400">No entries yet.</p>
-                ) : (
-                  <ul className="mt-4 space-y-3">
-                    {latest[type as keyof LatestData].map((item: any) => (
-                      <li key={item.id} className="rounded-lg border border-zinc-200 p-3 text-sm dark:border-zinc-800">
-                        <p className="font-medium text-black dark:text-white">{item.title || item.name}</p>
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                          {new Date(item.created_at).toLocaleString()}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ))}
+          {/* Content Manager */}
+          <div className="mt-12">
+            <ContentManager />
           </div>
         </div>
       </main>

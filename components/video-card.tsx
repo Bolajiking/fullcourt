@@ -3,6 +3,7 @@ import Image from 'next/image';
 
 interface VideoCardProps {
   id: string;
+  href?: string;
   title: string;
   description?: string | null;
   thumbnailUrl?: string | null;
@@ -13,6 +14,7 @@ interface VideoCardProps {
 
 export function VideoCard({
   id,
+  href,
   title,
   description,
   thumbnailUrl,
@@ -26,21 +28,31 @@ export function VideoCard({
   }
 
   return (
-    <Link href={`/videos/${id}`} className="group block">
+    <Link href={href ?? `/videos/${id}`} className="group block">
       <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-black to-[#0a0a0a] border border-white/10 shadow-2xl hover:shadow-[#FF6B35]/50 transition-all duration-700 hover:scale-110 hover:border-[#FF6B35]/70 hover:z-50 hover:-translate-y-2">
         {/* Animated gradient overlay on hover */}
         <div className="absolute inset-0 bg-gradient-to-br from-[#FF6B35]/0 via-[#FF3366]/0 to-[#00D9FF]/0 group-hover:from-[#FF6B35]/20 group-hover:via-[#FF3366]/10 group-hover:to-[#00D9FF]/20 transition-all duration-700 rounded-xl z-10 pointer-events-none"></div>
         
         <div className="relative aspect-video w-full bg-gradient-to-br from-[#0a0a0a] to-black overflow-hidden group-hover:aspect-[16/12] transition-all duration-700">
           {thumbnailUrl ? (
-            <Image
-              src={thumbnailUrl}
-              alt={title}
-              fill
-              className="object-cover transition-all duration-700 group-hover:scale-115 group-hover:brightness-90"
-              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-              priority={false}
-            />
+            thumbnailUrl.startsWith('data:') ? (
+              // Use regular img tag for base64 data URLs
+              <img
+                src={thumbnailUrl}
+                alt={title}
+                className="absolute inset-0 w-full h-full object-cover transition-all duration-700 group-hover:scale-115 group-hover:brightness-90"
+              />
+            ) : (
+              // Use Next.js Image for remote URLs
+              <Image
+                src={thumbnailUrl}
+                alt={title}
+                fill
+                className="object-cover transition-all duration-700 group-hover:scale-115 group-hover:brightness-90"
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                priority={false}
+              />
+            )
           ) : (
             <div className="flex h-full items-center justify-center relative">
               <div className="absolute inset-0 bg-gradient-to-br from-[#FF6B35]/5 to-[#00D9FF]/5 opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>

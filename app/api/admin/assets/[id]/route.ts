@@ -18,8 +18,8 @@ export async function DELETE(
     await deleteLivepeerAsset(id);
     
     // Revalidate caches to remove from UI immediately
-    revalidateTag('livepeer-assets');
-    revalidateTag('livepeer-recorded-sessions');
+    revalidateTag('livepeer-assets', {});
+    revalidateTag('livepeer-recorded-sessions', {});
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

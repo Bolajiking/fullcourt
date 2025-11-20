@@ -48,8 +48,8 @@ export async function DELETE(
     }
 
     // Revalidate caches to remove from UI immediately
-    revalidateTag('livepeer-assets');
-    revalidateTag('livepeer-videos');
+    revalidateTag('livepeer-assets', {});
+    revalidateTag('livepeer-videos', {});
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
@@ -92,7 +92,7 @@ export async function PATCH(
       throw error;
     }
 
-    revalidateTag('livepeer-videos');
+    revalidateTag('livepeer-videos', {});
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

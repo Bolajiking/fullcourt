@@ -58,7 +58,7 @@ export async function getLivepeerAsset(assetId: string) {
   
   try {
     const result = await livepeer.asset.get(assetId);
-    const asset = result.asset || result.data?.asset || result.data;
+    const asset = result.asset;
     
     if (!asset) {
       throw new Error(`Asset not found: ${assetId}`);
@@ -67,8 +67,8 @@ export async function getLivepeerAsset(assetId: string) {
     if (process.env.NODE_ENV === 'development') {
       console.log('[Livepeer Asset] Successfully fetched via SDK:', {
         assetId,
-        hasPlaybackIds: !!asset.playbackIds,
-        playbackIdsLength: asset.playbackIds?.length || 0,
+        hasPlaybackId: !!asset.playbackId,
+        playbackId: asset.playbackId,
         status: asset.status?.phase || asset.status,
       });
     }
@@ -312,8 +312,11 @@ export async function createLivepeerAsset(name: string) {
     const livepeer = getLivepeerClient();
     const result = await livepeer.asset.create({ name });
     
-    // SDK returns: { asset: {...} } or { data: { asset: {...} } }
-    return result.asset || result.data?.asset || result.data || result;
+    // SDK returns: { data: { asset: {...} } }
+    if (!result.data) {
+      throw new Error('No data returned from Livepeer');
+    }
+    return result.data.asset;
   } catch (error: any) {
     console.error('Error creating Livepeer asset:', {
       name,
@@ -412,8 +415,8 @@ export async function getLivepeerStream(streamId: string) {
     const livepeer = getLivepeerClient();
     const result = await livepeer.stream.get(streamId);
     
-    // SDK returns: { stream: {...} } or { data: { stream: {...} } }
-    return result.stream || result.data?.stream || result.data || result;
+    // SDK returns: { stream: {...} }
+    return result.stream || null;
   } catch (error: any) {
     // Suppress 404 errors as they are expected when checking if an ID is a stream vs asset
     if (error?.status === 404 || error?.message?.includes('not found') || error?.body?.errors?.[0] === 'not found') {
@@ -443,7 +446,7 @@ export async function updateStreamStatusFromLivepeer(
 
     // Check if stream is live
     // Livepeer streams have an `isActive` property or similar
-    const isLive = stream.isActive || stream.stream?.isActive || false;
+    const isLive = stream?.isActive || false;
 
     const { error } = await supabase
       .from('streams')

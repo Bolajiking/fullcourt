@@ -26,6 +26,7 @@ type SupabaseStreamRow = {
   rtmp_ingest_url: string;
   stream_key: string;
   is_live: boolean;
+  record_enabled: boolean | null;
   price_usd: number;
   is_free: boolean;
   created_at: string;
@@ -355,11 +356,7 @@ export const getLivepeerStreams = unstable_cache(
         if (!playbackId) {
           try {
             const livepeerStream = await getLivepeerStream(stream.id);
-            playbackId =
-              livepeerStream?.playbackId ||
-              livepeerStream?.playback?.id ||
-              livepeerStream?.playback_ids?.[0] ||
-              null;
+            playbackId = livepeerStream?.playbackId || null;
             if (playbackId && metadata?.id) {
               await supabase
                 .from('streams')
@@ -525,15 +522,9 @@ export async function getLivepeerStreamBySlug(slug: string): Promise<LivepeerStr
 
     const playbackId =
       stream?.playbackId ||
-      stream?.playback?.id ||
-      stream?.playback_ids?.[0] ||
       metadata?.playback_id ||
       null;
-    const playbackUrl =
-      stream?.playbackUrl ||
-      stream?.playback?.hls ||
-      stream?.playback?.url ||
-      null;
+    const playbackUrl = null; // Playback URL is constructed from playbackId when needed
     const recordEnabled =
       metadata?.record_enabled ??
       (typeof stream?.record === 'boolean' ? stream.record : true);
@@ -544,7 +535,7 @@ export async function getLivepeerStreamBySlug(slug: string): Promise<LivepeerStr
       supabaseId: metadata?.id,
       title: metadata?.title ?? stream?.name ?? 'Livestream',
       description: metadata?.description ?? '',
-      isActive: Boolean(stream?.isActive ?? stream?.isLive ?? metadata?.is_live),
+      isActive: Boolean(stream?.isActive ?? metadata?.is_live),
       recordEnabled,
       playbackId,
       playbackUrl,

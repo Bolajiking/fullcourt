@@ -21,18 +21,13 @@ export function PrivyProvider({ children }: PrivyProviderProps) {
 
     return {
       // Login methods
-      loginMethods: ['wallet', 'email', 'sms'] as const,
+      loginMethods: ['wallet', 'email', 'sms'] as ('wallet' | 'email' | 'sms')[],
       
       // Appearance
       appearance: {
         theme: 'light' as const,
-        accentColor: '#000000',
+        accentColor: '#000000' as `#${string}`,
         logo: '/next.svg',
-      },
-      
-      // Embedded wallet configuration
-      embeddedWallets: {
-        createOnLogin: 'users-without-wallets' as const,
       },
       
       // Supported chains (Base mainnet)

@@ -22,7 +22,7 @@ async function checkAssets() {
     try {
       console.log(`Checking asset: ${assetId}...`);
       const result = await livepeer.asset.get(assetId);
-      const asset = result.asset || result.data?.asset || result.data; // Handle potential response variants
+      const asset = result.asset; // SDK returns { asset: {...} }
       
       if (asset) {
         console.log(`✅ Asset Found: ${asset.name}`);

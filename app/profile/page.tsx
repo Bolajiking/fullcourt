@@ -83,7 +83,7 @@ export default function ProfilePage() {
           privy_user_id: userId,
           email: emailAddress,
           display_name: user.google?.name || user.twitter?.name || null,
-          avatar_url: user.google?.picture || user.twitter?.profilePictureUrl || null,
+          avatar_url: user.twitter?.profilePictureUrl || null,
         }),
       });
 

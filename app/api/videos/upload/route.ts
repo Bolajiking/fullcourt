@@ -90,52 +90,23 @@ export async function POST(request: NextRequest) {
     });
 
     console.log('[Video Upload] Asset creation result structure:', {
-      hasAsset: !!assetResult.asset,
       hasData: !!assetResult.data,
       keys: Object.keys(assetResult),
-      assetResultType: typeof assetResult,
+      statusCode: assetResult.statusCode,
     });
 
-    // The Livepeer SDK v3.5.0 returns: { asset: { id, ... }, tusEndpoint: "..." }
-    // But the response might also be nested in data property
-    // Try multiple possible structures
-    let asset: any = null;
-    let assetId: string | undefined;
-    let tusEndpoint: string | undefined;
-
-    // Check various possible response structures
-    if (assetResult.asset) {
-      asset = assetResult.asset;
-      assetId = asset.id;
-      tusEndpoint = asset.tusEndpoint || assetResult.tusEndpoint;
-    } else if (assetResult.data) {
-      // Response might be { data: { asset: {...} } } or { data: { id: ... } }
-      asset = assetResult.data.asset || assetResult.data;
-      assetId = asset?.id || assetResult.data.id;
-      tusEndpoint = asset?.tusEndpoint || assetResult.data.tusEndpoint;
-    } else if ((assetResult as any).id) {
-      // Response might be the asset directly
-      asset = assetResult;
-      assetId = (assetResult as any).id;
-      tusEndpoint = (assetResult as any).tusEndpoint;
-    }
-
-    console.log('[Video Upload] Extracted values:', {
-      assetId,
-      hasTusEndpoint: !!tusEndpoint,
-      assetKeys: asset ? Object.keys(asset) : null,
-    });
-
-    if (!assetId) {
-      console.error('[Video Upload] Failed to extract asset ID. Full response:', JSON.stringify(assetResult, null, 2));
+    // The Livepeer SDK v3.5.0+ returns: { data: { asset: {...}, tusEndpoint: "..." }, statusCode, ... }
+    if (!assetResult.data) {
+      console.error('[Video Upload] No data in asset result:', JSON.stringify(assetResult, null, 2));
       return NextResponse.json(
-        { 
-          error: 'Failed to create asset in Livepeer - could not extract asset ID',
-          details: 'Response structure: ' + JSON.stringify(assetResult).substring(0, 1000),
-        },
+        { error: 'Failed to create asset in Livepeer - no data returned' },
         { status: 500 }
       );
     }
+
+    const asset = assetResult.data.asset;
+    const assetId = asset.id;
+    const tusEndpoint = assetResult.data.tusEndpoint;
 
     console.log('[Video Upload] Asset created:', { assetId, hasTusEndpoint: !!tusEndpoint });
 
@@ -185,18 +156,14 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    // Extract metadata from asset (handle different response structures)
-    const playbackId = asset?.playbackIds?.[0]?.id || 
-                       assetResult.data?.playbackIds?.[0]?.id ||
-                       null;
+    // Extract metadata from asset
+    const playbackId = asset.playbackId || null;
     
     // Livepeer's default thumbnail endpoint
     const livepeerThumbnailUrl = `https://lp-assets.livepeer.studio/api/asset/${assetId}/thumbnail.jpg`;
     
-    const status = asset?.status?.phase === 'ready' || 
-                   assetResult.data?.status?.phase === 'ready'
-                   ? 'ready' 
-                   : 'processing';
+    // Status is always 'processing' initially after asset creation
+    const status = 'processing';
 
     // Prioritize: 1) Uploaded thumbnail URL, 2) Livepeer's standard thumbnail endpoint
     const finalThumbnail = thumbnailUrl || livepeerThumbnailUrl;

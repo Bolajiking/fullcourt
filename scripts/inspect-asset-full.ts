@@ -16,7 +16,7 @@ async function inspectAsset() {
 
   try {
     const result = await livepeer.asset.get(assetId);
-    const asset = result.asset || result.data?.asset || result.data;
+    const asset = result.asset;
     
     console.log('Full Asset Object:');
     console.log(JSON.stringify(asset, null, 2));

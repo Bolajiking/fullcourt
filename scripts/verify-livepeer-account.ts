@@ -25,8 +25,8 @@ async function verifyLivepeerAccount() {
     
     const result = await livepeer.asset.getAll();
     
-    // Handle different response structures
-    const assets = result.data || result.assets || result || [];
+    // SDK returns { data: Asset[] }
+    const assets = result.data || [];
     
     if (!Array.isArray(assets) || assets.length === 0) {
       console.log('✅ No assets found in this Livepeer account');

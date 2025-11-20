@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLivepeerVideos } from '@/lib/video/livepeer-data';
+import { getSupabaseAdmin } from '@/lib/supabase/server';
 
 /**
  * GET /api/videos

@@ -6,6 +6,10 @@ import Link from 'next/link';
 import { getLivepeerVideos, getLivepeerStreams } from '@/lib/video/livepeer-data';
 import { getPlaybackSrc } from '@/lib/video/livepeer-utils';
 
+// Force dynamic rendering for live stream data
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function Home() {
   const [videos, streams] = await Promise.all([
     getLivepeerVideos(12),

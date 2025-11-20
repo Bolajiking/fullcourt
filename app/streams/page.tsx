@@ -5,6 +5,10 @@ import Link from 'next/link';
 import { VideoPlayer } from '@/components/video-player';
 import { getPlaybackSrc } from '@/lib/video/livepeer-utils';
 
+// Force dynamic rendering since we fetch live stream data
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function StreamsPage() {
   const streams = await getLivepeerStreams();
   const activeStream = streams.find((stream) => stream.isActive && stream.playbackId);

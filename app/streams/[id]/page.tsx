@@ -6,6 +6,10 @@ import Link from 'next/link';
 import { getLivepeerStreamBySlug } from '@/lib/video/livepeer-data';
 import { getPlaybackSrc } from '@/lib/video/livepeer-utils';
 
+// Force dynamic rendering for stream data
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 interface StreamPageProps {
   params: Promise<{ id: string }>;
 }

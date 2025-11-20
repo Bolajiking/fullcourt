@@ -167,7 +167,7 @@ export async function getPlaybackUrl(playbackId: string): Promise<string | null>
     
     if (!Array.isArray(sources) || sources.length === 0) {
       console.warn('[Playback URL] No sources found in playback info');
-      return `https://livepeercdn.com/hls/${playbackId}/index.m3u8`;
+      return `https://livepeercdn.studio/hls/${playbackId}/index.m3u8`;
     }
     
     // Find HLS source (SDK returns 'url' not 'src')
@@ -178,8 +178,16 @@ export async function getPlaybackUrl(playbackId: string): Promise<string | null>
       s.url?.includes('.m3u8')
     );
     
+    // Prefer the standard global CDN URL for HLS if we have a playbackId
+    // The API sometimes returns direct origin URLs (vod-cdn.lp-playback.studio) which can be slower or have connectivity issues
+    if (playbackId) {
+      const cdnUrl = `https://livepeercdn.studio/hls/${playbackId}/index.m3u8`;
+      console.log(`[Playback URL] Using standard CDN URL: ${cdnUrl}`);
+      return cdnUrl;
+    }
+    
     if (hlsSource?.url) {
-      console.log(`[Playback URL] Found HLS URL: ${hlsSource.url.substring(0, 100)}...`);
+      console.log(`[Playback URL] Found HLS URL from API: ${hlsSource.url.substring(0, 100)}...`);
       return hlsSource.url;
     }
     
@@ -191,14 +199,14 @@ export async function getPlaybackUrl(playbackId: string): Promise<string | null>
     }
     
     console.warn('[Playback URL] No usable source found');
-    return `https://livepeercdn.com/hls/${playbackId}/index.m3u8`;
+    return `https://livepeercdn.studio/hls/${playbackId}/index.m3u8`;
   } catch (error: any) {
     console.error('[Playback URL] Error fetching playback URL:', {
       playbackId,
       error: error?.message || String(error),
     });
     // Last resort fallback to CDN pattern
-    return `https://livepeercdn.com/hls/${playbackId}/index.m3u8`;
+    return `https://livepeercdn.studio/hls/${playbackId}/index.m3u8`;
   }
 }
 

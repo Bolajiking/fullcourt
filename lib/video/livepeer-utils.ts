@@ -211,20 +211,11 @@ export async function getPlaybackUrl(playbackId: string): Promise<string | null>
 }
 
 export async function getPlaybackSrc(playbackId: string): Promise<Src[] | null> {
-  const playbackInfo = await getPlaybackInfo(playbackId);
-  if (playbackInfo) {
-    try {
-      const src = getSrc(playbackInfo);
-      if (Array.isArray(src) && src.length > 0) {
-        return src;
-      }
-    } catch (error) {
-      console.warn('[Playback Src] getSrc failed, falling back to CDN URL:', error);
-    }
-  }
-
-  const fallbackUrl = `https://livepeercdn.studio/hls/${playbackId}/index.m3u8`;
-  return [buildHlsSrc(fallbackUrl)];
+  // Always prioritize the standard CDN URL for reliability
+  // The SDK's getSrc() often returns direct origin URLs which can timeout
+  const cdnUrl = `https://livepeercdn.studio/hls/${playbackId}/index.m3u8`;
+  
+  return [buildHlsSrc(cdnUrl)];
 }
 
 /**
